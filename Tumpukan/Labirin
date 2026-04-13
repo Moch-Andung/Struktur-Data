@@ -1,0 +1,96 @@
+import random
+import heapq
+
+# Ukuran maze (harus ganjil)
+WIDTH = 21
+HEIGHT = 21
+
+# Representasi
+WALL = '#'
+PATH = ' '
+START = 'S'
+END = 'E'
+SOLUTION = '.'
+
+# =========================
+# Generate Maze (DFS)
+# =========================
+def generate_maze(w, h):
+    maze = [[WALL for _ in range(w)] for _ in range(h)]
+
+    def carve(x, y):
+        dirs = [(2,0), (-2,0), (0,2), (0,-2)]
+        random.shuffle(dirs)
+
+        for dx, dy in dirs:
+            nx, ny = x + dx, y + dy
+            if 0 < nx < w-1 and 0 < ny < h-1 and maze[ny][nx] == WALL:
+                maze[ny][nx] = PATH
+                maze[y + dy//2][x + dx//2] = PATH
+                carve(nx, ny)
+
+    maze[1][1] = PATH
+    carve(1,1)
+    return maze
+
+# =========================
+# A* Algorithm
+# =========================
+def heuristic(a, b):
+    return abs(a[0]-b[0]) + abs(a[1]-b[1])
+
+def astar(maze, start, end):
+    open_set = []
+    heapq.heappush(open_set, (0, start))
+    came_from = {}
+    g_score = {start: 0}
+
+    while open_set:
+        _, current = heapq.heappop(open_set)
+
+        if current == end:
+            path = []
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+            return path[::-1]
+
+        x, y = current
+        for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+            nx, ny = x+dx, y+dy
+
+            if maze[ny][nx] == WALL:
+                continue
+
+            neighbor = (nx, ny)
+            temp_g = g_score[current] + 1
+
+            if neighbor not in g_score or temp_g < g_score[neighbor]:
+                g_score[neighbor] = temp_g
+                f = temp_g + heuristic(neighbor, end)
+                heapq.heappush(open_set, (f, neighbor))
+                came_from[neighbor] = current
+
+    return None
+
+# =========================
+# Main Program
+# =========================
+maze = generate_maze(WIDTH, HEIGHT)
+
+start = (1,1)
+end = (WIDTH-2, HEIGHT-2)
+
+maze[start[1]][start[0]] = START
+maze[end[1]][end[0]] = END
+
+path = astar(maze, start, end)
+
+if path:
+    for x, y in path:
+        if maze[y][x] not in (START, END):
+            maze[y][x] = SOLUTION
+
+# Print maze
+for row in maze:
+    print("".join(row))
