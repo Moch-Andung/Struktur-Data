@@ -1,0 +1,100 @@
+import tkinter as tk
+import random
+from collections import deque
+
+# =========================
+# KONFIGURASI SIMULASI
+# =========================
+NUM_AGENTS = 3
+SIMULATION_TIME = 100
+ARRIVAL_CHANCE = 0.4   # peluang penumpang datang tiap tick
+
+# =========================
+# DATA
+# =========================
+queue = deque()
+agents = [None] * NUM_AGENTS
+agent_time = [0] * NUM_AGENTS
+current_time = 0
+passenger_id = 1
+
+# =========================
+# GUI
+# =========================
+root = tk.Tk()
+root.title("Simulasi Loket Tiket Bandara - Queue Visualization")
+root.geometry("1000x500")
+
+canvas = tk.Canvas(root, width=1000, height=500, bg="white")
+canvas.pack()
+
+info_text = canvas.create_text(500, 30, text="", font=("Arial", 16, "bold"))
+
+# gambar loket
+for i in range(NUM_AGENTS):
+    x = 700
+    y = 100 + i * 100
+    canvas.create_rectangle(x, y, x+150, y+60, fill="lightblue")
+    canvas.create_text(x+75, y+30, text=f"LOKET {i+1}", font=("Arial", 12, "bold"))
+
+# =========================
+# FUNGSI VISUALISASI
+# =========================
+def draw_scene():
+    canvas.delete("passenger")
+
+    # tampilkan antrian
+    x_start = 50
+    y = 250
+    for i, p in enumerate(queue):
+        x = x_start + i * 60
+        canvas.create_oval(x, y, x+40, y+40, fill="orange", tags="passenger")
+        canvas.create_text(x+20, y+20, text=str(p), tags="passenger")
+
+    # tampilkan penumpang di loket
+    for i in range(NUM_AGENTS):
+        if agents[i] is not None:
+            x = 620
+            y = 110 + i * 100
+            canvas.create_oval(x, y, x+40, y+40, fill="green", tags="passenger")
+            canvas.create_text(x+20, y+20, text=str(agents[i]), tags="passenger")
+
+    canvas.itemconfig(info_text, text=f"Waktu Simulasi: {current_time}    Jumlah Antrian: {len(queue)}")
+
+# =========================
+# LOGIKA SIMULASI
+# =========================
+def update_simulation():
+    global current_time, passenger_id
+
+    if current_time >= SIMULATION_TIME:
+        canvas.create_text(500, 450, text="SIMULASI SELESAI", font=("Arial", 20, "bold"), fill="red")
+        return
+
+    current_time += 1
+
+    # R1: Penumpang datang
+    if random.random() < ARRIVAL_CHANCE:
+        queue.append(passenger_id)
+        passenger_id += 1
+
+    # R2 & R3: Agen memproses penumpang
+    for i in range(NUM_AGENTS):
+        if agents[i] is None and queue:
+            agents[i] = queue.popleft()
+            agent_time[i] = random.randint(3, 8)
+
+        elif agents[i] is not None:
+            agent_time[i] -= 1
+            if agent_time[i] <= 0:
+                agents[i] = None
+
+    draw_scene()
+    root.after(700, update_simulation)
+
+# =========================
+# START
+# =========================
+draw_scene()
+update_simulation()
+root.mainloop()
