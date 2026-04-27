@@ -1,0 +1,307 @@
+"""
+Kasus 4 — BFS (Breadth-First Search)
+Visualisasi penjelajahan graf menggunakan Queue.
+Queue menjamin level demi level (node terdekat diproses duluan).
+
+Cara pakai:
+  - Klik [Langkah BFS] untuk melangkah satu per satu
+  - Klik [Auto] untuk animasi otomatis
+  - Klik node untuk memilih titik awal baru
+  - Klik [Reset] untuk mengulang
+"""
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib.widgets import Button
+from collections import deque
+import math
+
+# ── Warna ────────────────────────────────────────────────────────────────────
+BG      = "#12121c"
+PANEL   = "#1e1e2e"
+CARD    = "#2a2a3e"
+BORDER  = "#44446a"
+WHITE   = "#e8e8f0"
+GRAY    = "#8888aa"
+LGRAY   = "#505070"
+TEAL    = "#1d9e75"
+TEAL_L  = "#0f5040"
+BLUE    = "#388bdd"
+BLUE_L  = "#1e4682"
+GREEN   = "#63992a"
+GREEN_L = "#284610"
+RED     = "#e24b4a"
+RED_L   = "#641e1e"
+AMBER   = "#ef9f27"
+AMBER_L = "#64410a"
+PURPLE  = "#7f77dd"
+PURPLE_L= "#37326e"
+
+# ── Graf & posisi ─────────────────────────────────────────────────────────────
+GRAPH = {
+    "A": ["B","C"],
+    "B": ["A","D","E"],
+    "C": ["A","F"],
+    "D": ["B"],
+    "E": ["B","G"],
+    "F": ["C","G"],
+    "G": ["E","F"],
+}
+
+# Posisi node di koordinat axes (0..13, 0..8)
+POS = {
+    "A": (6.5,  6.8),
+    "B": (3.8,  5.2),
+    "C": (9.2,  5.2),
+    "D": (2.0,  3.4),
+    "E": (5.0,  3.4),
+    "F": (8.0,  3.4),
+    "G": (6.5,  1.8),
+}
+
+NODE_R = 0.42   # radius lingkaran node
+
+# ── State BFS ─────────────────────────────────────────────────────────────────
+bfs = {
+    "visited":  {},        # node -> urutan kunjungan (1-based)
+    "queue":    deque(),
+    "current":  None,
+    "order":    [],
+    "started":  False,
+    "done":     False,
+    "start":    "A",
+    "auto":     False,
+    "edges_traversed": set(),   # set of frozenset({u,v})
+    "msg":      "Klik 'Langkah BFS' untuk mulai dari node A.",
+}
+
+fig, ax = plt.subplots(figsize=(13, 8.5))
+fig.patch.set_facecolor(BG)
+ax.set_facecolor(BG)
+ax.set_xlim(0, 13)
+ax.set_ylim(0, 8.5)
+ax.axis("off")
+fig.canvas.manager.set_window_title("Kasus 4 — BFS Breadth-First Search")
+plt.subplots_adjust(bottom=0.14, top=0.97)
+
+def draw_rrect(ax, x, y, w, h, fc, ec=BORDER, lw=1.2, r=0.15):
+    box = FancyBboxPatch((x, y), w, h,
+                         boxstyle=f"round,pad=0,rounding_size={r}",
+                         facecolor=fc, edgecolor=ec, linewidth=lw, zorder=2)
+    ax.add_patch(box)
+
+def node_color(node):
+    b = bfs
+    if node == b["current"]:
+        return AMBER_L, AMBER, AMBER          # sedang diproses
+    if node in b["visited"]:
+        return TEAL_L, TEAL, TEAL             # sudah dikunjungi
+    if node in b["queue"]:
+        return PURPLE_L, PURPLE, PURPLE       # dalam queue
+    return CARD, BORDER, GRAY                 # belum
+
+def redraw():
+    ax.cla()
+    ax.set_facecolor(BG)
+    ax.set_xlim(0, 13)
+    ax.set_ylim(0, 8.5)
+    ax.axis("off")
+
+    b = bfs
+
+    # ── Judul ─────────────────────────────────────────────────────────────────
+    ax.text(6.5, 8.25, "Kasus 4 — BFS (Breadth-First Search)",
+            color=WHITE, fontsize=16, fontweight="bold", ha="center", va="center")
+    ax.text(6.5, 7.9, "Queue menjamin penjelajahan level demi level — node terdekat selalu diproses duluan.",
+            color=GRAY, fontsize=10, ha="center", va="center")
+
+    # Pesan
+    draw_rrect(ax, 0.4, 7.5, 12.2, 0.32, CARD, BORDER)
+    ax.text(0.7, 7.66, b["msg"], color=GRAY, fontsize=10, va="center")
+
+    # ── Queue strip ───────────────────────────────────────────────────────────
+    ax.text(0.5, 7.22, "Queue:", color=GRAY, fontsize=10, va="center")
+    q_list = list(b["queue"])
+    for i, n in enumerate(q_list):
+        rx = 1.4 + i * 0.72
+        is_front = (i == 0)
+        fc = AMBER_L if is_front else PURPLE_L
+        bc = AMBER   if is_front else PURPLE
+        draw_rrect(ax, rx, 7.07, 0.64, 0.28, fc, bc, lw=1.2, r=0.07)
+        ax.text(rx + 0.32, 7.21, n, color=WHITE, fontsize=9.5, ha="center", va="center",
+                fontweight="bold" if is_front else "normal")
+    if not q_list:
+        ax.text(1.5, 7.21, "(kosong)", color=LGRAY, fontsize=9, va="center")
+    if q_list:
+        ax.text(1.3, 7.14, "FRONT→", color=AMBER, fontsize=7.5, va="center", ha="right")
+
+    # ── Gambar edges ──────────────────────────────────────────────────────────
+    drawn = set()
+    for u, neighbors in GRAPH.items():
+        for v in neighbors:
+            edge = frozenset([u, v])
+            if edge in drawn: continue
+            drawn.add(edge)
+            ux, uy = POS[u]
+            vx, vy = POS[v]
+            traversed = edge in b["edges_traversed"]
+            col = TEAL if traversed else BORDER
+            lw  = 2.5  if traversed else 1.0
+            ax.plot([ux, vx], [uy, vy], color=col, linewidth=lw, zorder=1,
+                    solid_capstyle="round")
+
+    # ── Gambar node ───────────────────────────────────────────────────────────
+    for node, (px, py) in POS.items():
+        fc, bc, tc = node_color(node)
+        r = NODE_R * (1.2 if node == b["current"] else 1.0)
+        circ = plt.Circle((px, py), r, facecolor=fc, edgecolor=bc,
+                          linewidth=2.5 if node == b["current"] else 1.5, zorder=4)
+        ax.add_patch(circ)
+        ax.text(px, py + 0.04, node,
+                color=tc, fontsize=14, fontweight="bold",
+                ha="center", va="center", zorder=5)
+
+        # Nomor urutan kunjungan
+        if node in b["visited"]:
+            ax.text(px + r*0.75, py + r*0.75, str(b["visited"][node]),
+                    color=TEAL, fontsize=8, ha="center", va="center",
+                    fontweight="bold", zorder=5)
+
+        # Label level
+        level_map = {"A":0, "B":1, "C":1, "D":2, "E":2, "F":2, "G":3}
+        lbl_col = LGRAY if node not in b["visited"] else GRAY
+        ax.text(px, py - r - 0.22, f"L{level_map[node]}",
+                color=lbl_col, fontsize=8, ha="center", va="center", zorder=5)
+
+    # ── Urutan kunjungan ──────────────────────────────────────────────────────
+    if b["order"]:
+        ax.text(0.5, 1.3, "Urutan kunjungan:", color=GRAY, fontsize=10, va="center")
+        for i, n in enumerate(b["order"]):
+            rx = 2.5 + i * 1.1
+            draw_rrect(ax, rx, 1.05, 0.9, 0.44, TEAL_L, TEAL, lw=1.0, r=0.1)
+            ax.text(rx + 0.45, 1.27, n, color=TEAL, fontsize=11,
+                    ha="center", va="center", fontweight="bold")
+            if i < len(b["order"]) - 1:
+                ax.text(rx + 1.0, 1.27, "→", color=GRAY, fontsize=10, ha="center", va="center")
+
+    # ── Legenda ───────────────────────────────────────────────────────────────
+    legend = [
+        (AMBER_L, AMBER,  "Sedang diproses"),
+        (TEAL_L,  TEAL,   "Sudah dikunjungi"),
+        (PURPLE_L,PURPLE, "Dalam queue"),
+        (CARD,    BORDER, "Belum dikunjungi"),
+    ]
+    draw_rrect(ax, 0.4, 0.3, 12.2, 0.62, PANEL, BORDER)
+    for i, (fc, bc, lbl) in enumerate(legend):
+        lx = 0.9 + i * 3.1
+        circ = plt.Circle((lx, 0.61), 0.17, facecolor=fc, edgecolor=bc, linewidth=1.5, zorder=3)
+        ax.add_patch(circ)
+        ax.text(lx + 0.3, 0.61, lbl, color=WHITE, fontsize=9.5, va="center")
+
+    fig.canvas.draw()
+
+# ── Logika BFS ────────────────────────────────────────────────────────────────
+def bfs_step(event=None):
+    b = bfs
+    if b["done"]: return
+
+    if not b["started"]:
+        start = b["start"]
+        b["queue"].append(start)
+        b["visited"][start] = 1
+        b["current"] = start
+        b["order"].append(start)
+        b["started"] = True
+        b["msg"] = f"Mulai dari '{start}' → enqueue: [{start}]"
+        redraw(); return
+
+    if not b["queue"]:
+        b["done"] = True
+        b["current"] = None
+        b["msg"] = "✅  BFS selesai! Semua node dikunjungi. Urutan: " + " → ".join(b["order"])
+        redraw(); return
+
+    node = b["queue"].popleft()
+    b["current"] = node
+
+    new_nb = []
+    for nb in GRAPH[node]:
+        if nb not in b["visited"]:
+            b["visited"][nb] = len(b["visited"]) + 1
+            b["queue"].append(nb)
+            b["order"].append(nb)
+            new_nb.append(nb)
+            b["edges_traversed"].add(frozenset([node, nb]))
+
+    b["msg"] = f"Dequeue: '{node}'  |  Enqueue tetangga baru: [{', '.join(new_nb) if new_nb else '—'}]"
+
+    if not b["queue"]:
+        b["done"] = True
+        b["current"] = None
+        b["msg"] = "✅  BFS selesai! Urutan: " + " → ".join(b["order"])
+
+    redraw()
+
+def toggle_auto(event):
+    if bfs["done"]: return
+    bfs["auto"] = not bfs["auto"]
+    btn_auto.label.set_text("⏸ Pause" if bfs["auto"] else "▶▶ Auto")
+
+def reset_bfs(event):
+    bfs["visited"]  = {}
+    bfs["queue"]    = deque()
+    bfs["current"]  = None
+    bfs["order"]    = []
+    bfs["started"]  = False
+    bfs["done"]     = False
+    bfs["auto"]     = False
+    bfs["edges_traversed"] = set()
+    bfs["msg"] = f"BFS direset. Mulai dari node '{bfs['start']}'."
+    btn_auto.label.set_text("▶▶ Auto")
+    redraw()
+
+# ── Klik node untuk pilih start ───────────────────────────────────────────────
+def on_click(event):
+    if event.inaxes != ax: return
+    if bfs["started"]: return
+    for node, (px, py) in POS.items():
+        dist = math.hypot(event.xdata - px, event.ydata - py)
+        if dist <= NODE_R * 1.3:
+            bfs["start"] = node
+            bfs["msg"] = f"Node awal dipilih: '{node}'. Klik 'Langkah BFS' untuk mulai."
+            redraw()
+            break
+
+fig.canvas.mpl_connect("button_press_event", on_click)
+
+# ── Tombol ────────────────────────────────────────────────────────────────────
+ax_step  = fig.add_axes([0.05, 0.04, 0.20, 0.06])
+ax_auto  = fig.add_axes([0.27, 0.04, 0.15, 0.06])
+ax_reset = fig.add_axes([0.44, 0.04, 0.12, 0.06])
+
+for a in [ax_step, ax_auto, ax_reset]:
+    a.set_facecolor(PANEL)
+
+btn_step  = Button(ax_step,  "Langkah BFS ▶", color=PURPLE_L, hovercolor=PURPLE)
+btn_auto  = Button(ax_auto,  "▶▶ Auto",        color=TEAL_L,   hovercolor=TEAL)
+btn_reset = Button(ax_reset, "Reset",           color=CARD,     hovercolor=BORDER)
+
+for b in [btn_step, btn_auto, btn_reset]:
+    b.label.set_color(WHITE)
+    b.label.set_fontsize(10)
+
+btn_step.on_clicked(bfs_step)
+btn_auto.on_clicked(toggle_auto)
+btn_reset.on_clicked(reset_bfs)
+
+def on_timer():
+    if bfs["auto"] and not bfs["done"]:
+        bfs_step()
+
+timer = fig.canvas.new_timer(interval=800)
+timer.add_callback(on_timer)
+timer.start()
+
+redraw()
+plt.show()
