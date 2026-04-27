@@ -1,0 +1,237 @@
+"""
+Kasus 3 — Antrian Rumah Sakit (Priority Queue)
+Pasien kritis (prioritas 0) dilayani lebih dulu.
+Prioritas sama → FIFO (urutan tiba).
+
+Cara pakai:
+  - Klik [Panggil Pasien] untuk melayani pasien berikutnya
+  - Klik [+ Tambah Pasien] untuk menambah pasien baru
+  - Klik [Reset] untuk mengulang
+"""
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+from matplotlib.widgets import Button
+import random
+
+# ── Warna ────────────────────────────────────────────────────────────────────
+BG      = "#12121c"
+PANEL   = "#1e1e2e"
+CARD    = "#2a2a3e"
+BORDER  = "#44446a"
+WHITE   = "#e8e8f0"
+GRAY    = "#8888aa"
+LGRAY   = "#505070"
+TEAL    = "#1d9e75"
+TEAL_L  = "#0f5040"
+BLUE    = "#388bdd"
+BLUE_L  = "#1e4682"
+GREEN   = "#63992a"
+GREEN_L = "#284610"
+RED     = "#e24b4a"
+RED_L   = "#641e1e"
+AMBER   = "#ef9f27"
+AMBER_L = "#64410a"
+PURPLE  = "#7f77dd"
+
+PRI_LABEL = ["KRITIS",  "DARURAT",  "MENENGAH", "RINGAN"]
+PRI_COLOR = [RED,       AMBER,      BLUE,       TEAL]
+PRI_BG    = [RED_L,     AMBER_L,    BLUE_L,     TEAL_L]
+PRI_ICON  = ["🚨",       "⚠️",        "🔵",        "🟢"]
+
+EXTRA_NAMES = ["Adi","Bela","Ciko","Dewi","Eko","Farida","Galih","Hana",
+               "Irfan","Joko","Kiki","Lena","Miko","Nina","Oki","Putri"]
+
+BASE_PATIENTS = [
+    {"name":"Budi",   "pri":3, "time":"08:01"},
+    {"name":"Ani",    "pri":0, "time":"08:03"},
+    {"name":"Citra",  "pri":2, "time":"08:05"},
+    {"name":"Dedi",   "pri":0, "time":"08:07"},
+    {"name":"Eka",    "pri":1, "time":"08:09"},
+    {"name":"Fira",   "pri":2, "time":"08:12"},
+    {"name":"Gilang", "pri":3, "time":"08:15"},
+]
+
+patients = [dict(p, served=False, order=i) for i, p in enumerate(BASE_PATIENTS)]
+served_list = []
+global_order = [len(BASE_PATIENTS)]
+msg = ["7 pasien menunggu. Klik 'Panggil Pasien' untuk memulai layanan."]
+serving = [None]
+
+fig, ax = plt.subplots(figsize=(13, 8.5))
+fig.patch.set_facecolor(BG)
+ax.set_facecolor(BG)
+ax.set_xlim(0, 13)
+ax.set_ylim(0, 8.5)
+ax.axis("off")
+fig.canvas.manager.set_window_title("Kasus 3 — Priority Queue Rumah Sakit")
+plt.subplots_adjust(bottom=0.14, top=0.97)
+
+def draw_rrect(ax, x, y, w, h, fc, ec=BORDER, lw=1.2, r=0.15):
+    box = FancyBboxPatch((x, y), w, h,
+                         boxstyle=f"round,pad=0,rounding_size={r}",
+                         facecolor=fc, edgecolor=ec, linewidth=lw, zorder=2)
+    ax.add_patch(box)
+
+def redraw():
+    ax.cla()
+    ax.set_facecolor(BG)
+    ax.set_xlim(0, 13)
+    ax.set_ylim(0, 8.5)
+    ax.axis("off")
+
+    # ── Judul ─────────────────────────────────────────────────────────────────
+    ax.text(6.5, 8.2, "Kasus 3 — Antrian Rumah Sakit (Priority Queue)",
+            color=WHITE, fontsize=16, fontweight="bold", ha="center", va="center")
+    ax.text(6.5, 7.85, "Pasien kritis (0) dilayani lebih dulu. Prioritas sama → FIFO.",
+            color=GRAY, fontsize=10, ha="center", va="center")
+
+    # Pesan status
+    draw_rrect(ax, 0.4, 7.46, 12.2, 0.32, CARD, BORDER)
+    ax.text(0.7, 7.62, msg[0], color=GRAY, fontsize=10, va="center")
+
+    # ── Legenda prioritas ─────────────────────────────────────────────────────
+    for i, (lbl, col, bg, icon) in enumerate(zip(PRI_LABEL, PRI_COLOR, PRI_BG, PRI_ICON)):
+        rx = 0.5 + i * 3.1
+        draw_rrect(ax, rx, 7.0, 2.9, 0.36, bg, col, lw=1.0)
+        ax.text(rx + 1.45, 7.18, f"{icon}  {i} — {lbl}",
+                color=col, fontsize=9.5, ha="center", va="center", fontweight="bold")
+
+    # ── Header kolom ──────────────────────────────────────────────────────────
+    ax.text(1.4,  6.7, "Prioritas",  color=GRAY, fontsize=9, ha="center", va="center")
+    ax.text(4.0,  6.7, "Nama",       color=GRAY, fontsize=9, ha="center", va="center")
+    ax.text(6.5,  6.7, "Waktu Tiba", color=GRAY, fontsize=9, ha="center", va="center")
+    ax.text(9.5,  6.7, "Status",     color=GRAY, fontsize=9, ha="center", va="center")
+    ax.text(11.5, 6.7, "Urutan",     color=GRAY, fontsize=9, ha="center", va="center")
+    pygame_draw_line = ax.axhline(y=6.55, xmin=0.03, xmax=0.97, color=BORDER, linewidth=0.8)
+
+    # ── Urutkan: belum dilayani dulu (by prioritas, lalu order), lalu yang sudah ──
+    waiting  = sorted([p for p in patients if not p["served"]], key=lambda p: (p["pri"], p["order"]))
+    done_ps  = [p for p in patients if p["served"]]
+
+    all_sorted = waiting + done_ps
+    row_h = 0.55
+    max_show = 10
+
+    for i, p in enumerate(all_sorted[:max_show]):
+        ry = 6.3 - i * (row_h + 0.05)
+        pri = p["pri"]
+        is_serving = (serving[0] is p)
+
+        if is_serving:
+            bg, bc = GREEN_L, GREEN
+        elif p["served"]:
+            bg, bc = PANEL, LGRAY
+        else:
+            bg, bc = PRI_BG[pri], PRI_COLOR[pri]
+
+        draw_rrect(ax, 0.4, ry, 12.2, row_h, bg, bc, lw=1.5 if is_serving else 1.0)
+
+        # Badge prioritas
+        badge_col = PRI_COLOR[pri] if not p["served"] else LGRAY
+        badge_bg  = PRI_BG[pri]    if not p["served"] else CARD
+        draw_rrect(ax, 0.55, ry+0.1, 1.9, 0.34, badge_bg, badge_col, lw=0.8, r=0.1)
+        ax.text(1.5, ry + row_h/2, f"{PRI_ICON[pri]} {pri}",
+                color=badge_col, fontsize=9, ha="center", va="center", fontweight="bold")
+
+        # Nama
+        nc = LGRAY if p["served"] else WHITE
+        ax.text(4.0,  ry + row_h/2, p["name"],    color=nc,   fontsize=11, ha="center", va="center",
+                fontweight="bold" if not p["served"] else "normal")
+        ax.text(6.5,  ry + row_h/2, p["time"],    color=GRAY, fontsize=10, ha="center", va="center")
+
+        # Status
+        if is_serving:
+            ax.text(9.5, ry + row_h/2, "🩺 Sedang dilayani...", color=GREEN, fontsize=9.5, ha="center", va="center")
+        elif p["served"]:
+            ax.text(9.5, ry + row_h/2, "✓ Selesai",             color=TEAL,  fontsize=9.5, ha="center", va="center")
+        else:
+            pos = waiting.index(p) + 1 if p in waiting else "?"
+            ax.text(9.5, ry + row_h/2, f"Menunggu (#{pos})",    color=GRAY,  fontsize=9.5, ha="center", va="center")
+
+        # Urutan dilayani
+        if p["served"] and p in served_list:
+            idx = served_list.index(p) + 1
+            ax.text(11.5, ry + row_h/2, f"ke-{idx}", color=TEAL, fontsize=10, ha="center", va="center",
+                    fontweight="bold")
+        elif not p["served"]:
+            ax.text(11.5, ry + row_h/2, "—", color=LGRAY, fontsize=10, ha="center", va="center")
+
+    if len(all_sorted) > max_show:
+        ax.text(6.5, 6.3 - max_show*(row_h+0.05) + 0.2,
+                f"+ {len(all_sorted)-max_show} pasien lagi...",
+                color=LGRAY, fontsize=9, ha="center", va="center")
+
+    # ── Statistik bawah ───────────────────────────────────────────────────────
+    draw_rrect(ax, 0.4, 0.3, 12.2, 0.9, PANEL, BORDER)
+    total_w = len(waiting)
+    total_d = len(done_ps)
+    ax.text(2.0,  0.9, f"Menunggu: {total_w}", color=AMBER, fontsize=11, ha="center", va="center", fontweight="bold")
+    ax.text(6.5,  0.9, f"Dilayani: {total_d}", color=TEAL,  fontsize=11, ha="center", va="center", fontweight="bold")
+    ax.text(11.0, 0.9, f"Total: {len(patients)}", color=WHITE, fontsize=11, ha="center", va="center", fontweight="bold")
+    ax.text(6.5,  0.52, "Prioritas sama → yang datang lebih awal dilayani lebih dulu (FIFO per level)",
+            color=LGRAY, fontsize=9, ha="center", va="center", fontstyle="italic")
+
+    fig.canvas.draw()
+
+# ── Tombol ────────────────────────────────────────────────────────────────────
+ax_serve  = fig.add_axes([0.05, 0.04, 0.22, 0.06])
+ax_add    = fig.add_axes([0.29, 0.04, 0.22, 0.06])
+ax_reset  = fig.add_axes([0.53, 0.04, 0.12, 0.06])
+
+for a in [ax_serve, ax_add, ax_reset]:
+    a.set_facecolor(PANEL)
+
+btn_serve = Button(ax_serve, "🩺 Panggil Pasien",    color=TEAL_L,  hovercolor=TEAL)
+btn_add   = Button(ax_add,   "+ Tambah Pasien Baru", color=BLUE_L,  hovercolor=BLUE)
+btn_reset = Button(ax_reset, "Reset",                color=CARD,    hovercolor=BORDER)
+
+for b in [btn_serve, btn_add, btn_reset]:
+    b.label.set_color(WHITE)
+    b.label.set_fontsize(10)
+
+def serve(event):
+    waiting = [p for p in patients if not p["served"]]
+    if not waiting:
+        msg[0] = "✅  Semua pasien sudah dilayani!"
+        serving[0] = None
+        redraw(); return
+    waiting.sort(key=lambda p: (p["pri"], p["order"]))
+    p = waiting[0]
+    p["served"] = True
+    served_list.append(p)
+    serving[0] = p
+    msg[0] = f"Melayani: {p['name']} — {PRI_ICON[p['pri']]} {PRI_LABEL[p['pri']]} (Tiba: {p['time']})"
+    redraw()
+
+def add_patient(event):
+    import random
+    hour = random.randint(8, 14)
+    minute = random.randint(0, 59)
+    name = random.choice(EXTRA_NAMES)
+    pri  = random.randint(0, 3)
+    patients.append({
+        "name": name, "pri": pri,
+        "time": f"{hour:02d}:{minute:02d}",
+        "served": False, "order": global_order[0]
+    })
+    global_order[0] += 1
+    msg[0] = f"Pasien baru: {name} ({PRI_ICON[pri]} {PRI_LABEL[pri]}) tiba pada {hour:02d}:{minute:02d}."
+    redraw()
+
+def reset_all(event):
+    patients.clear()
+    patients.extend([dict(p, served=False, order=i) for i, p in enumerate(BASE_PATIENTS)])
+    served_list.clear()
+    serving[0] = None
+    global_order[0] = len(BASE_PATIENTS)
+    msg[0] = "7 pasien menunggu. Klik 'Panggil Pasien' untuk memulai layanan."
+    redraw()
+
+btn_serve.on_clicked(serve)
+btn_add.on_clicked(add_patient)
+btn_reset.on_clicked(reset_all)
+
+redraw()
+plt.show()
