@@ -1,0 +1,207 @@
+"""
+Kasus 1 — Antrian Printer Bersama
+Visualisasi Queue FIFO dengan Matplotlib
+
+Cara pakai:
+  - Klik [Kirim Dokumen] untuk enqueue
+  - Klik [Print / Dequeue] untuk mencetak
+  - Klik [Reset] untuk mengulang
+"""
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+from collections import deque
+
+# ── Warna ────────────────────────────────────────────────────────────────────
+BG       = "#12121c"
+PANEL    = "#1e1e2e"
+CARD     = "#2a2a3e"
+BORDER   = "#44446a"
+WHITE    = "#e8e8f0"
+GRAY     = "#8888aa"
+TEAL     = "#1d9e75"
+TEAL_L   = "#0f5040"
+BLUE     = "#388bdd"
+BLUE_L   = "#1e4682"
+GREEN    = "#63992a"
+GREEN_L  = "#284610"
+RED      = "#e24b4a"
+RED_L    = "#641e1e"
+AMBER    = "#ef9f27"
+
+DOCS = [
+    ("laporan.pdf",      "📄"),
+    ("tugas.docx",       "📝"),
+    ("foto.jpg",         "🖼"),
+    ("presentasi.pptx",  "📊"),
+    ("data.xlsx",        "📈"),
+    ("surat.docx",       "📃"),
+    ("hasil.pdf",        "📋"),
+    ("notulen.pdf",      "📑"),
+]
+
+queue   = deque()
+done    = []
+doc_idx = [0]
+msg     = ["Klik 'Kirim Dokumen' untuk menambah antrian printer."]
+
+# ── Setup figure ─────────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(13, 7))
+fig.patch.set_facecolor(BG)
+ax.set_facecolor(BG)
+ax.set_xlim(0, 13)
+ax.set_ylim(0, 7)
+ax.axis("off")
+plt.tight_layout(pad=0.5)
+fig.canvas.manager.set_window_title("Kasus 1 — Antrian Printer")
+
+def draw_rrect(ax, x, y, w, h, color, ec=BORDER, lw=1.2, radius=0.18):
+    box = FancyBboxPatch((x, y), w, h,
+                         boxstyle=f"round,pad=0,rounding_size={radius}",
+                         facecolor=color, edgecolor=ec, linewidth=lw, zorder=2)
+    ax.add_patch(box)
+
+def redraw():
+    ax.cla()
+    ax.set_facecolor(BG)
+    ax.set_xlim(0, 13)
+    ax.set_ylim(0, 7)
+    ax.axis("off")
+
+    # Judul
+    ax.text(6.5, 6.62, "Kasus 1 — Antrian Printer Bersama",
+            color=WHITE, fontsize=16, fontweight="bold", ha="center", va="center")
+    ax.text(6.5, 6.25, "FIFO: Dokumen yang dikirim pertama akan dicetak pertama.",
+            color=GRAY, fontsize=10, ha="center", va="center")
+
+    # Pesan status
+    draw_rrect(ax, 0.4, 5.78, 12.2, 0.38, CARD, BORDER)
+    ax.text(0.7, 5.97, msg[0], color=GRAY, fontsize=10, va="center")
+
+    # Label FRONT dan REAR
+    ax.text(0.5, 5.35, "FRONT →", color=TEAL, fontsize=9, fontweight="bold", va="center")
+    ax.text(12.0, 5.35, "← REAR", color=AMBER, fontsize=9, fontweight="bold", va="center", ha="right")
+
+    # ── Slot antrian (maks 6) ────────────────────────────────────────────────
+    MAX_SLOTS = 6
+    q_list = list(queue)
+    slot_w = 1.85
+    gap    = 0.12
+    ox     = 0.5
+
+    for i in range(MAX_SLOTS):
+        rx = ox + i * (slot_w + gap)
+        ry = 4.2
+
+        if i < len(q_list):
+            doc, icon = q_list[i]
+            bg = TEAL_L if i == 0 else CARD
+            bc = TEAL   if i == 0 else BORDER
+            draw_rrect(ax, rx, ry, slot_w, 0.95, bg, bc, lw=1.8 if i==0 else 1.2)
+
+            # Nama dokumen
+            short = doc if len(doc) <= 13 else doc[:12] + "…"
+            ax.text(rx + slot_w/2, ry + 0.62, icon + " " + short,
+                    color=WHITE if i > 0 else TEAL,
+                    fontsize=8.5, ha="center", va="center", fontweight="bold" if i==0 else "normal")
+
+            # Label posisi
+            lbl = "▶ FRONT" if i == 0 else ("REAR" if i == len(q_list)-1 else f"#{i+1}")
+            lbl_col = TEAL if i == 0 else (AMBER if i == len(q_list)-1 else GRAY)
+            ax.text(rx + slot_w/2, ry + 0.18, lbl,
+                    color=lbl_col, fontsize=8, ha="center", va="center")
+        else:
+            draw_rrect(ax, rx, ry, slot_w, 0.95, PANEL, BORDER, lw=0.8)
+            ax.text(rx + slot_w/2, ry + 0.47, "—",
+                    color=BORDER, fontsize=14, ha="center", va="center")
+
+    # Panah FIFO
+    ax.annotate("", xy=(0.45, 4.67), xytext=(0.02, 4.67),
+                arrowprops=dict(arrowstyle="->", color=TEAL, lw=1.5))
+    ax.annotate("", xy=(12.6, 4.67), xytext=(12.15, 4.67),
+                arrowprops=dict(arrowstyle="->", color=AMBER, lw=1.5))
+    ax.text(0.02, 4.15, "KELUAR (dequeue)", color=TEAL, fontsize=8, va="center")
+    ax.text(12.6, 4.15, "MASUK (enqueue)", color=AMBER, fontsize=8, va="center", ha="right")
+
+    # ── Daftar selesai ──────────────────────────────────────────────────────
+    ax.text(0.5, 3.72, "✓  Selesai dicetak:", color=GRAY, fontsize=10, va="center")
+    for i, (doc, icon) in enumerate(done[-6:]):
+        rx = 0.5 + i * 2.08
+        draw_rrect(ax, rx, 3.05, 1.95, 0.55, GREEN_L, GREEN, lw=1.0)
+        short = doc if len(doc) <= 12 else doc[:11] + "…"
+        ax.text(rx + 0.97, 3.32, "✓ " + short,
+                color=GREEN, fontsize=8, ha="center", va="center")
+
+    # ── Info algoritma ──────────────────────────────────────────────────────
+    draw_rrect(ax, 0.4, 0.4, 12.2, 2.48, PANEL, BORDER)
+    ax.text(6.5, 2.62, "Operasi Queue", color=WHITE, fontsize=11,
+            fontweight="bold", ha="center", va="center")
+
+    ops = [
+        ("enqueue(item)", "Tambah item ke REAR antrian",        AMBER, 2.1),
+        ("dequeue()",     "Ambil & hapus item dari FRONT",      TEAL,  1.6),
+        ("peek()",        "Lihat FRONT tanpa menghapus",        BLUE,  1.1),
+        ("isEmpty()",     "True jika antrian kosong",           GRAY,  0.65),
+    ]
+    for op, desc, col, y in ops:
+        ax.text(1.0, y,  f"  {op}", color=col,  fontsize=10, va="center",
+                fontfamily="monospace", fontweight="bold")
+        ax.text(4.5, y,  f"→  {desc}", color=GRAY, fontsize=10, va="center")
+
+    ax.text(6.5, 0.5, "Semua operasi Queue: O(1)  ·  Prinsip: First-In, First-Out",
+            color=BORDER, fontsize=9, ha="center", va="center")
+
+    # ── Tombol ──────────────────────────────────────────────────────────────
+    fig.canvas.draw()
+
+# ── Tombol interaktif ────────────────────────────────────────────────────────
+from matplotlib.widgets import Button
+
+ax_send  = fig.add_axes([0.05, 0.895, 0.18, 0.055])
+ax_print = fig.add_axes([0.25, 0.895, 0.18, 0.055])
+ax_reset = fig.add_axes([0.45, 0.895, 0.10, 0.055])
+
+for a in [ax_send, ax_print, ax_reset]:
+    a.set_facecolor(PANEL)
+
+btn_send  = Button(ax_send,  "+ Kirim Dokumen", color=TEAL_L,  hovercolor=TEAL)
+btn_print = Button(ax_print, "🖨  Print / Dequeue", color=BLUE_L, hovercolor=BLUE)
+btn_reset = Button(ax_reset, "Reset",            color=CARD,    hovercolor=BORDER)
+
+for b in [btn_send, btn_print, btn_reset]:
+    b.label.set_color(WHITE)
+    b.label.set_fontsize(10)
+
+def on_send(event):
+    if len(queue) >= 6:
+        msg[0] = "⚠  Printer penuh! Tunggu dokumen selesai dicetak."
+    else:
+        doc, icon = DOCS[doc_idx[0] % len(DOCS)]
+        doc_idx[0] += 1
+        queue.append((doc, icon))
+        msg[0] = f"'{doc}' ditambahkan ke antrian. Total: {len(queue)} dokumen."
+    redraw()
+
+def on_print(event):
+    if not queue:
+        msg[0] = "⚠  Antrian kosong! Tidak ada dokumen untuk dicetak."
+    else:
+        item = queue.popleft()
+        done.append(item)
+        msg[0] = f"✅  Mencetak: '{item[0]}'"
+    redraw()
+
+def on_reset(event):
+    queue.clear()
+    done.clear()
+    doc_idx[0] = 0
+    msg[0] = "Antrian direset. Klik 'Kirim Dokumen' untuk memulai."
+    redraw()
+
+btn_send.on_clicked(on_send)
+btn_print.on_clicked(on_print)
+btn_reset.on_clicked(on_reset)
+
+redraw()
+plt.show()
