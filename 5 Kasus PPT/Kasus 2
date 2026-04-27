@@ -1,0 +1,282 @@
+"""
+Kasus 2 — Permainan Hot Potato
+Visualisasi simulasi melingkar dengan Queue
+
+Cara pakai:
+  - Atur slider N (berapa kali oper sebelum eliminasi)
+  - Klik [Oper Sekali] atau [Auto] untuk jalankan simulasi
+  - Klik [Reset] untuk mengulang dengan pemain baru
+"""
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch, Circle
+from matplotlib.widgets import Button, Slider
+from collections import deque
+import math
+
+# ── Warna ────────────────────────────────────────────────────────────────────
+BG      = "#12121c"
+PANEL   = "#1e1e2e"
+CARD    = "#2a2a3e"
+BORDER  = "#44446a"
+WHITE   = "#e8e8f0"
+GRAY    = "#8888aa"
+LGRAY   = "#505070"
+TEAL    = "#1d9e75"
+TEAL_L  = "#0f5040"
+BLUE    = "#388bdd"
+BLUE_L  = "#1e4682"
+GREEN   = "#63992a"
+GREEN_L = "#284610"
+RED     = "#e24b4a"
+RED_L   = "#641e1e"
+AMBER   = "#ef9f27"
+AMBER_L = "#64410a"
+PURPLE  = "#7f77dd"
+PURPLE_L= "#37326e"
+
+NAMES = ["Ari", "Budi", "Citra", "Dedi", "Eka", "Fira", "Gilang", "Hani"]
+
+# ── State ─────────────────────────────────────────────────────────────────────
+state = {
+    "queue":   deque(NAMES),
+    "elim":    [],
+    "counter": 0,
+    "winner":  None,
+    "N":       3,
+    "msg":     "Atur N dan klik 'Oper Sekali' atau 'Auto' untuk memulai.",
+    "auto":    False,
+    "auto_tick": 0,
+}
+
+fig, ax = plt.subplots(figsize=(12, 8))
+fig.patch.set_facecolor(BG)
+ax.set_facecolor(BG)
+ax.set_xlim(0, 12)
+ax.set_ylim(0, 8)
+ax.axis("off")
+fig.canvas.manager.set_window_title("Kasus 2 — Hot Potato")
+plt.subplots_adjust(bottom=0.18, top=0.97)
+
+def draw_rrect(ax, x, y, w, h, fc, ec=BORDER, lw=1.2, r=0.18):
+    box = FancyBboxPatch((x, y), w, h,
+                         boxstyle=f"round,pad=0,rounding_size={r}",
+                         facecolor=fc, edgecolor=ec, linewidth=lw, zorder=2)
+    ax.add_patch(box)
+
+def redraw():
+    ax.cla()
+    ax.set_facecolor(BG)
+    ax.set_xlim(0, 12)
+    ax.set_ylim(0, 8)
+    ax.axis("off")
+
+    st = state
+    q_list   = list(st["queue"])
+    elim_set = set(st["elim"])
+    winner   = st["winner"]
+    N        = st["N"]
+    counter  = st["counter"]
+
+    # Judul
+    ax.text(6, 7.65, "Kasus 2 — Permainan Hot Potato",
+            color=WHITE, fontsize=16, fontweight="bold", ha="center", va="center")
+    ax.text(6, 7.3, f"Setiap {N} kali oper, pemain yang memegang tersingkir. Tersisa 1 = Pemenang!",
+            color=GRAY, fontsize=10, ha="center", va="center")
+
+    # Pesan status
+    draw_rrect(ax, 0.4, 6.88, 11.2, 0.34, CARD, BORDER)
+    ax.text(0.7, 7.05, st["msg"], color=GRAY, fontsize=10, va="center")
+
+    # ── Lingkaran pemain ─────────────────────────────────────────────────────
+    cx, cy, ring_r = 6.0, 3.8, 2.4
+    n_players = len(NAMES)
+
+    # Garis lingkaran putus-putus sebagai arena
+    circle = plt.Circle((cx, cy), ring_r, color=BORDER,
+                         fill=False, linestyle="--", linewidth=0.8, zorder=1)
+    ax.add_patch(circle)
+
+    # Label "ARENA"
+    ax.text(cx, cy + ring_r + 0.28, "— ARENA —",
+            color=LGRAY, fontsize=8, ha="center", va="center")
+
+    holder = q_list[0] if q_list else None
+
+    for i, name in enumerate(NAMES):
+        angle = (i / n_players) * 2 * math.pi - math.pi / 2
+        px = cx + ring_r * math.cos(angle)
+        py = cy + ring_r * math.sin(angle)
+
+        is_elim   = name in elim_set
+        is_holder = (name == holder) and not is_elim
+        is_winner = (name == winner)
+
+        # Warna berdasarkan status
+        if is_winner:
+            fc, ec, tc, r_size = GREEN_L,  GREEN,  GREEN,  0.45
+        elif is_holder:
+            fc, ec, tc, r_size = AMBER_L,  AMBER,  AMBER,  0.45
+        elif is_elim:
+            fc, ec, tc, r_size = RED_L,    RED,    RED,    0.32
+        else:
+            # Di antrian (active)
+            q_pos = q_list.index(name) if name in q_list else -1
+            intensity = max(0.3, 1 - q_pos * 0.12) if q_pos >= 0 else 0.3
+            fc, ec, tc, r_size = CARD, BLUE, BLUE, 0.36
+
+        circ = plt.Circle((px, py), r_size, facecolor=fc, edgecolor=ec,
+                          linewidth=2 if (is_holder or is_winner) else 1, zorder=3)
+        ax.add_patch(circ)
+
+        # Nama pemain
+        name_col = tc if (is_holder or is_winner or is_elim) else WHITE
+        ax.text(px, py + 0.07, name, color=name_col,
+                fontsize=9.5 if not is_elim else 8.5,
+                fontweight="bold" if is_holder or is_winner else "normal",
+                ha="center", va="center", zorder=4)
+
+        # Ikon status
+        if is_winner:
+            ax.text(px, py - 0.22, "🏆", fontsize=11, ha="center", va="center", zorder=4)
+        elif is_holder:
+            ax.text(px, py - 0.22, "🥔", fontsize=11, ha="center", va="center", zorder=4)
+        elif is_elim:
+            ax.text(px, py - 0.2, "✕", color=RED, fontsize=10, ha="center", va="center", zorder=4)
+
+        # Panah oper ke pemain berikutnya
+        if not is_elim and q_list and name in q_list:
+            idx_in_q = q_list.index(name)
+            if idx_in_q < len(q_list) - 1:
+                next_name = q_list[idx_in_q + 1]
+                if next_name in NAMES:
+                    j = NAMES.index(next_name)
+                    angle2 = (j / n_players) * 2 * math.pi - math.pi / 2
+                    nx = cx + ring_r * math.cos(angle2)
+                    ny = cy + ring_r * math.sin(angle2)
+                    # Panah kecil dari p ke next
+                    mid_x = (px + nx) / 2
+                    mid_y = (py + ny) / 2
+                    ax.annotate("", xy=(nx*0.15 + mid_x*0.85, ny*0.15 + mid_y*0.85),
+                                xytext=(px*0.15 + mid_x*0.85, py*0.15 + mid_y*0.85),
+                                arrowprops=dict(arrowstyle="->,head_width=0.15,head_length=0.12",
+                                               color=AMBER if is_holder else LGRAY,
+                                               lw=1.2 if is_holder else 0.6),
+                                zorder=2)
+
+    # ── Progress bar eliminasi ────────────────────────────────────────────────
+    progress = (counter % N) / N if N > 0 else 0
+    bar_y = 1.28
+    draw_rrect(ax, 0.5, bar_y, 11.0, 0.32, PANEL, BORDER, r=0.1)
+    if progress > 0:
+        draw_rrect(ax, 0.5, bar_y, 11.0 * progress, 0.32, AMBER_L, AMBER, r=0.1)
+    ax.text(0.5, bar_y + 0.16, f"Progres ke eliminasi: {counter % N}/{N} oper",
+            color=AMBER, fontsize=9, va="center")
+    ax.text(11.5, bar_y + 0.16, f"Total oper: {counter}",
+            color=GRAY, fontsize=9, va="center", ha="right")
+
+    # ── Panel info ────────────────────────────────────────────────────────────
+    draw_rrect(ax, 0.4, 0.28, 11.2, 0.88, PANEL, BORDER)
+    ax.text(6, 0.92, "Teknik kunci: dequeue() depan → enqueue() belakang = simulasi oper melingkar",
+            color=GRAY, fontsize=9.5, ha="center", va="center", fontstyle="italic")
+    ax.text(6, 0.55, "Setelah N kali oper → dequeue() tanpa enqueue = pemain tersingkir",
+            color=LGRAY, fontsize=9, ha="center", va="center")
+
+    # ── Legenda ───────────────────────────────────────────────────────────────
+    legend_items = [
+        (AMBER_L, AMBER, "Memegang 🥔"),
+        (BLUE_L,  BLUE,  "Di antrian"),
+        (RED_L,   RED,   "Tersingkir"),
+        (GREEN_L, GREEN, "Pemenang 🏆"),
+    ]
+    for i, (fc, ec, lbl) in enumerate(legend_items):
+        lx = 0.5 + i * 2.9
+        circ = plt.Circle((lx, 1.88), 0.16, facecolor=fc, edgecolor=ec, linewidth=1.5, zorder=3)
+        ax.add_patch(circ)
+        ax.text(lx + 0.25, 1.88, lbl, color=WHITE, fontsize=9, va="center")
+
+    # ── Daftar tersingkir ─────────────────────────────────────────────────────
+    if st["elim"]:
+        ax.text(0.5, 2.28, "Tersingkir: " + "  ✕  ".join(st["elim"]),
+                color=RED, fontsize=9.5, va="center")
+
+    fig.canvas.draw()
+
+# ── Tombol & Slider ───────────────────────────────────────────────────────────
+ax_step   = fig.add_axes([0.05, 0.06, 0.15, 0.06])
+ax_auto   = fig.add_axes([0.22, 0.06, 0.15, 0.06])
+ax_reset  = fig.add_axes([0.39, 0.06, 0.10, 0.06])
+ax_slider = fig.add_axes([0.56, 0.075, 0.35, 0.03])
+
+for a in [ax_step, ax_auto, ax_reset]:
+    a.set_facecolor(PANEL)
+
+btn_step  = Button(ax_step,  "Oper Sekali ▶", color=AMBER_L,  hovercolor=AMBER)
+btn_auto  = Button(ax_auto,  "▶▶ Auto",        color=TEAL_L,   hovercolor=TEAL)
+btn_reset = Button(ax_reset, "Reset",           color=CARD,     hovercolor=BORDER)
+sld_n     = Slider(ax_slider, "N oper", 1, 10, valinit=3, valstep=1,
+                   color=AMBER, initcolor=AMBER)
+
+for b in [btn_step, btn_auto, btn_reset]:
+    b.label.set_color(WHITE)
+    b.label.set_fontsize(10)
+sld_n.label.set_color(WHITE)
+sld_n.valtext.set_color(AMBER)
+ax_slider.set_facecolor(PANEL)
+
+def step_once(event=None):
+    st = state
+    if st["winner"]: return
+    st["counter"] += 1
+    moved = st["queue"].popleft()
+    st["queue"].append(moved)
+    N = st["N"]
+    if st["counter"] % N == 0:
+        out = st["queue"].popleft()
+        st["elim"].append(out)
+        if len(st["queue"]) == 1:
+            st["winner"] = st["queue"][0]
+            st["msg"] = f"🏆  '{st['winner']}' adalah PEMENANG!"
+            st["auto"] = False
+        else:
+            st["msg"] = f"'{out}' tersingkir! (oper ke-{st['counter']}) Sisa: {len(st['queue'])} pemain."
+    else:
+        st["msg"] = f"Oper ke-{st['counter']}. Pemegang sekarang: '{st['queue'][0]}'"
+    redraw()
+
+def toggle_auto(event):
+    if state["winner"]: return
+    state["auto"] = not state["auto"]
+    btn_auto.label.set_text("⏸ Pause" if state["auto"] else "▶▶ Auto")
+    redraw()
+
+def reset_game(event):
+    state["queue"]   = deque(NAMES)
+    state["elim"]    = []
+    state["counter"] = 0
+    state["winner"]  = None
+    state["auto"]    = False
+    state["msg"]     = "Game direset. Klik 'Oper Sekali' atau 'Auto' untuk mulai."
+    btn_auto.label.set_text("▶▶ Auto")
+    redraw()
+
+def on_n_change(val):
+    state["N"] = int(val)
+
+btn_step.on_clicked(step_once)
+btn_auto.on_clicked(toggle_auto)
+btn_reset.on_clicked(reset_game)
+sld_n.on_changed(on_n_change)
+
+# ── Timer untuk auto ──────────────────────────────────────────────────────────
+def on_timer():
+    if state["auto"] and not state["winner"]:
+        step_once()
+
+timer = fig.canvas.new_timer(interval=500)
+timer.add_callback(on_timer)
+timer.start()
+
+redraw()
+plt.show()
