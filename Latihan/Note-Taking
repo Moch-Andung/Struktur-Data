@@ -1,0 +1,370 @@
+"""
+Struktur Data untuk Aplikasi Note-Taking
+=========================================
+Fitur:
+  1. Multiple tags per note (multi-linked by tag)
+  2. Chronological & alphabetical views (doubly linked sorted)
+  3. Sync status tracking (circular buffer for recent changes)
+"""
+
+from __future__ import annotations
+from datetime import datetime
+from typing import Optional
+
+
+# ─────────────────────────────────────────────
+# 1. NODE UTAMA: NOTE
+# ─────────────────────────────────────────────
+
+class NoteNode:
+    """Satu catatan dalam sistem."""
+
+    def __init__(self, note_id: int, title: str, content: str):
+        self.note_id   = note_id
+        self.title     = title
+        self.content   = content
+        self.created_at = datetime.now()
+        self.tags: list[TagNode] = []          # daftar tag yang melekat
+
+        # pointer untuk doubly linked list kronologis
+        self.prev_chrono: Optional[NoteNode] = None
+        self.next_chrono: Optional[NoteNode] = None
+
+        # pointer untuk doubly linked list alfabetis
+        self.prev_alpha: Optional[NoteNode] = None
+        self.next_alpha: Optional[NoteNode] = None
+
+    def __repr__(self):
+        tags = [t.name for t in self.tags]
+        return (f"Note(id={self.note_id}, title='{self.title}', "
+                f"created='{self.created_at:%Y-%m-%d %H:%M:%S}', tags={tags})")
+
+
+# ─────────────────────────────────────────────
+# 2. TAG NODE — multi-linked list per tag
+# ─────────────────────────────────────────────
+
+class TagLinkNode:
+    """Node penghubung antara Tag dan Note (multi-linked)."""
+
+    def __init__(self, note: NoteNode):
+        self.note = note
+        self.next: Optional[TagLinkNode] = None   # ke note berikutnya dalam tag ini
+
+
+class TagNode:
+    """Sebuah tag yang memiliki linked list ke semua note-nya."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.head: Optional[TagLinkNode] = None   # kepala linked list note
+
+    def add_note(self, note: NoteNode):
+        """Tambahkan note ke tag ini."""
+        new_link = TagLinkNode(note)
+        new_link.next = self.head
+        self.head = new_link
+        if self not in note.tags:
+            note.tags.append(self)
+
+    def get_notes(self) -> list[NoteNode]:
+        """Ambil semua note yang memiliki tag ini."""
+        notes, cur = [], self.head
+        while cur:
+            notes.append(cur.note)
+            cur = cur.next
+        return notes
+
+    def __repr__(self):
+        return f"Tag('{self.name}', notes={len(self.get_notes())})"
+
+
+# ─────────────────────────────────────────────
+# 3. DOUBLY LINKED LIST — kronologis & alfabetis
+# ─────────────────────────────────────────────
+
+class ChronologicalList:
+    """Doubly linked list diurutkan dari terbaru ke terlama."""
+
+    def __init__(self):
+        self.head: Optional[NoteNode] = None
+        self.tail: Optional[NoteNode] = None
+
+    def insert(self, note: NoteNode):
+        """Sisipkan note secara kronologis (terbaru di depan)."""
+        if not self.head:
+            self.head = self.tail = note
+            return
+        # cari posisi yang tepat (descending by created_at)
+        cur = self.head
+        while cur and cur.created_at > note.created_at:
+            cur = cur.next_chrono
+        if cur is None:                         # sisipkan di akhir
+            note.prev_chrono = self.tail
+            self.tail.next_chrono = note
+            self.tail = note
+        elif cur is self.head:                  # sisipkan di awal
+            note.next_chrono = self.head
+            self.head.prev_chrono = note
+            self.head = note
+        else:                                   # sisipkan di tengah
+            prev = cur.prev_chrono
+            note.prev_chrono = prev
+            note.next_chrono = cur
+            prev.next_chrono = note
+            cur.prev_chrono = note
+
+    def to_list(self) -> list[NoteNode]:
+        notes, cur = [], self.head
+        while cur:
+            notes.append(cur)
+            cur = cur.next_chrono
+        return notes
+
+
+class AlphabeticalList:
+    """Doubly linked list diurutkan secara alfabetis berdasarkan title."""
+
+    def __init__(self):
+        self.head: Optional[NoteNode] = None
+        self.tail: Optional[NoteNode] = None
+
+    def insert(self, note: NoteNode):
+        """Sisipkan note secara alfabetis."""
+        if not self.head:
+            self.head = self.tail = note
+            return
+        cur = self.head
+        while cur and cur.title.lower() < note.title.lower():
+            cur = cur.next_alpha
+        if cur is None:
+            note.prev_alpha = self.tail
+            self.tail.next_alpha = note
+            self.tail = note
+        elif cur is self.head:
+            note.next_alpha = self.head
+            self.head.prev_alpha = note
+            self.head = note
+        else:
+            prev = cur.prev_alpha
+            note.prev_alpha = prev
+            note.next_alpha = cur
+            prev.next_alpha = note
+            cur.prev_alpha = note
+
+    def to_list(self) -> list[NoteNode]:
+        notes, cur = [], self.head
+        while cur:
+            notes.append(cur)
+            cur = cur.next_alpha
+        return notes
+
+
+# ─────────────────────────────────────────────
+# 4. CIRCULAR BUFFER — sync status tracking
+# ─────────────────────────────────────────────
+
+class SyncChange:
+    """Merekam satu perubahan untuk keperluan sinkronisasi."""
+
+    def __init__(self, note_id: int, action: str):
+        self.note_id    = note_id
+        self.action     = action          # 'ADD' | 'UPDATE' | 'DELETE'
+        self.timestamp  = datetime.now()
+        self.synced     = False
+
+    def __repr__(self):
+        status = "✓" if self.synced else "✗"
+        return (f"SyncChange(note={self.note_id}, action='{self.action}', "
+                f"time='{self.timestamp:%H:%M:%S}', synced={status})")
+
+
+class CircularBuffer:
+    """Circular buffer berkapasitas tetap untuk menyimpan perubahan terbaru."""
+
+    def __init__(self, capacity: int = 10):
+        self.capacity = capacity
+        self.buffer: list[Optional[SyncChange]] = [None] * capacity
+        self.head = 0    # indeks baca tertua
+        self.tail = 0    # indeks tulis berikutnya
+        self.size = 0
+
+    def push(self, change: SyncChange):
+        """Tambahkan perubahan baru; timpa yang terlama jika penuh."""
+        self.buffer[self.tail] = change
+        self.tail = (self.tail + 1) % self.capacity
+        if self.size < self.capacity:
+            self.size += 1
+        else:
+            # buffer penuh — timpa entri terlama
+            self.head = (self.head + 1) % self.capacity
+
+    def get_recent(self) -> list[SyncChange]:
+        """Kembalikan semua perubahan yang tersimpan (terlama → terbaru)."""
+        result = []
+        for i in range(self.size):
+            idx = (self.head + i) % self.capacity
+            if self.buffer[idx] is not None:
+                result.append(self.buffer[idx])
+        return result
+
+    def mark_synced(self, note_id: int):
+        """Tandai semua perubahan note tertentu sebagai sudah disinkronkan."""
+        for change in self.get_recent():
+            if change.note_id == note_id:
+                change.synced = True
+
+    def __repr__(self):
+        return f"CircularBuffer(capacity={self.capacity}, filled={self.size})"
+
+
+# ─────────────────────────────────────────────
+# 5. NOTE MANAGER — fasad utama
+# ─────────────────────────────────────────────
+
+class NoteManager:
+    """Mengelola semua note, tag, view, dan sync tracking."""
+
+    def __init__(self, buffer_size: int = 10):
+        self._notes: dict[int, NoteNode]  = {}
+        self._tags:  dict[str, TagNode]   = {}
+        self._next_id = 1
+        self.chrono_view = ChronologicalList()
+        self.alpha_view  = AlphabeticalList()
+        self.sync_buffer = CircularBuffer(buffer_size)
+
+    # ── CRUD Note ──────────────────────────────
+
+    def add_note(self, title: str, content: str,
+                 tag_names: list[str] | None = None) -> NoteNode:
+        note = NoteNode(self._next_id, title, content)
+        self._next_id += 1
+        self._notes[note.note_id] = note
+
+        # tambahkan ke kedua view
+        self.chrono_view.insert(note)
+        self.alpha_view.insert(note)
+
+        # proses tag
+        for name in (tag_names or []):
+            self._get_or_create_tag(name).add_note(note)
+
+        # catat ke sync buffer
+        self.sync_buffer.push(SyncChange(note.note_id, "ADD"))
+        return note
+
+    def update_note(self, note_id: int, title: str | None = None,
+                    content: str | None = None) -> NoteNode:
+        note = self._get_note(note_id)
+        if title:
+            note.title = title
+        if content:
+            note.content = content
+        self.sync_buffer.push(SyncChange(note_id, "UPDATE"))
+        return note
+
+    def delete_note(self, note_id: int):
+        note = self._get_note(note_id)
+        self.sync_buffer.push(SyncChange(note_id, "DELETE"))
+        del self._notes[note_id]
+
+    def add_tag_to_note(self, note_id: int, tag_name: str):
+        note = self._get_note(note_id)
+        self._get_or_create_tag(tag_name).add_note(note)
+        self.sync_buffer.push(SyncChange(note_id, "UPDATE"))
+
+    # ── Query ──────────────────────────────────
+
+    def get_notes_by_tag(self, tag_name: str) -> list[NoteNode]:
+        tag = self._tags.get(tag_name)
+        return tag.get_notes() if tag else []
+
+    def get_chronological(self) -> list[NoteNode]:
+        return self.chrono_view.to_list()
+
+    def get_alphabetical(self) -> list[NoteNode]:
+        return self.alpha_view.to_list()
+
+    def get_recent_changes(self) -> list[SyncChange]:
+        return self.sync_buffer.get_recent()
+
+    # ── Helper ─────────────────────────────────
+
+    def _get_note(self, note_id: int) -> NoteNode:
+        if note_id not in self._notes:
+            raise KeyError(f"Note {note_id} tidak ditemukan.")
+        return self._notes[note_id]
+
+    def _get_or_create_tag(self, name: str) -> TagNode:
+        if name not in self._tags:
+            self._tags[name] = TagNode(name)
+        return self._tags[name]
+
+
+# ─────────────────────────────────────────────
+# DEMO / CONTOH PENGGUNAAN
+# ─────────────────────────────────────────────
+
+if __name__ == "__main__":
+    manager = NoteManager(buffer_size=5)
+
+    # Tambah beberapa note
+    n1 = manager.add_note("Belajar Python",
+                          "List, dict, dan struktur data.",
+                          ["python", "belajar"])
+
+    n2 = manager.add_note("Algoritma Sorting",
+                          "Bubble sort, merge sort, quick sort.",
+                          ["algoritma", "belajar"])
+
+    n3 = manager.add_note("Catatan Meeting",
+                          "Diskusi sprint planning Q2.",
+                          ["meeting", "kerja"])
+
+    n4 = manager.add_note("Arsitektur Sistem",
+                          "Microservice vs monolith.",
+                          ["arsitektur", "kerja", "python"])
+
+    # Tambah tag tambahan ke note yang sudah ada
+    manager.add_tag_to_note(n1.note_id, "algoritma")
+
+    # Update salah satu note
+    manager.update_note(n3.note_id, title="Catatan Meeting Q2")
+
+    # ── Tampilkan hasil ──────────────────────────
+
+    print("=" * 55)
+    print("  VIEW KRONOLOGIS (terbaru → terlama)")
+    print("=" * 55)
+    for note in manager.get_chronological():
+        print(f"  {note}")
+
+    print("\n" + "=" * 55)
+    print("  VIEW ALFABETIS (A → Z)")
+    print("=" * 55)
+    for note in manager.get_alphabetical():
+        print(f"  {note}")
+
+    print("\n" + "=" * 55)
+    print("  NOTES DENGAN TAG 'belajar'")
+    print("=" * 55)
+    for note in manager.get_notes_by_tag("belajar"):
+        print(f"  {note}")
+
+    print("\n" + "=" * 55)
+    print("  NOTES DENGAN TAG 'python'")
+    print("=" * 55)
+    for note in manager.get_notes_by_tag("python"):
+        print(f"  {note}")
+
+    print("\n" + "=" * 55)
+    print("  SYNC BUFFER — 5 perubahan terakhir")
+    print("=" * 55)
+    for change in manager.get_recent_changes():
+        print(f"  {change}")
+
+    # Simulasi sync berhasil
+    manager.sync_buffer.mark_synced(n3.note_id)
+    print("\n  Setelah mark_synced untuk note 3:")
+    for change in manager.get_recent_changes():
+        print(f"  {change}")
