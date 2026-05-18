@@ -1,1 +1,298 @@
+# ============================================================
+#  PROGRAM ALGORITMA REKURSIF
+#  1. N-Queens (N-Ratu)
+#  2. Knight's Tour (Tur Kuda)
+#  3. Knapsack (Masalah Karung)
+# ============================================================
 
+import sys
+
+# ============================================================
+# 1. N-QUEENS
+# ============================================================
+
+def solve_nqueens(n):
+    """Mencari semua solusi N-Queens menggunakan backtracking rekursif."""
+    solutions = []
+    board = [-1] * n  # board[row] = kolom tempat ratu di baris row
+
+    def is_safe(row, col):
+        for r in range(row):
+            c = board[r]
+            if c == col or abs(c - col) == abs(r - row):
+                return False
+        return True
+
+    def backtrack(row):
+        if row == n:
+            solutions.append(board[:])
+            return
+        for col in range(n):
+            if is_safe(row, col):
+                board[row] = col
+                backtrack(row + 1)
+                board[row] = -1
+
+    backtrack(0)
+    return solutions
+
+def print_nqueens_board(solution):
+    n = len(solution)
+    border = "+" + ("---+" * n)
+    print(border)
+    for row in range(n):
+        line = "|"
+        for col in range(n):
+            line += " Q |" if solution[row] == col else " . |"
+        print(line)
+        print(border)
+
+def run_nqueens():
+    print("\n" + "=" * 50)
+    print("       MASALAH N-QUEENS (N-RATU)")
+    print("=" * 50)
+    try:
+        n = int(input("Masukkan ukuran papan (N): "))
+    except ValueError:
+        print("Input tidak valid.")
+        return
+
+    if n < 1:
+        print("N harus lebih besar dari 0.")
+        return
+
+    print(f"\nMencari solusi untuk papan {n}x{n}...")
+    solutions = solve_nqueens(n)
+
+    if not solutions:
+        print(f"Tidak ada solusi untuk N={n}.")
+        return
+
+    print(f"Ditemukan {len(solutions)} solusi!\n")
+
+    # Tampilkan solusi pertama
+    print(f"Solusi ke-1 dari {len(solutions)}:")
+    print_nqueens_board(solutions[0])
+    print(f"\nPosisi ratu per baris: {[c+1 for c in solutions[0]]} (nomor kolom 1-based)")
+
+    if len(solutions) > 1:
+        tampil = input(f"\nTampilkan semua {len(solutions)} solusi? (y/n): ").lower()
+        if tampil == 'y':
+            for i, sol in enumerate(solutions[1:], 2):
+                print(f"\nSolusi ke-{i}:")
+                print_nqueens_board(sol)
+
+
+# ============================================================
+# 2. KNIGHT'S TOUR (TUR KUDA)
+# ============================================================
+
+# 8 kemungkinan gerak kuda di catur
+KNIGHT_MOVES = [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]
+
+def get_degree(board, row, col, n):
+    """Hitung jumlah langkah valid dari posisi (row, col) — heuristik Warnsdorff."""
+    count = 0
+    for dr, dc in KNIGHT_MOVES:
+        nr, nc = row + dr, col + dc
+        if 0 <= nr < n and 0 <= nc < n and board[nr][nc] == -1:
+            count += 1
+    return count
+
+def solve_knights_tour(n, start_row, start_col):
+    """Menyelesaikan Knight's Tour dengan backtracking + heuristik Warnsdorff."""
+    board = [[-1] * n for _ in range(n)]
+    board[start_row][start_col] = 0  # langkah pertama = 0
+
+    def backtrack(row, col, step):
+        if step == n * n:
+            return True  # semua petak sudah dikunjungi
+
+        # Urutkan langkah berikutnya berdasarkan degree terkecil (Warnsdorff)
+        next_moves = []
+        for dr, dc in KNIGHT_MOVES:
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < n and 0 <= nc < n and board[nr][nc] == -1:
+                deg = get_degree(board, nr, nc, n)
+                next_moves.append((deg, nr, nc))
+        next_moves.sort()  # pilih degree terkecil dulu
+
+        for _, nr, nc in next_moves:
+            board[nr][nc] = step
+            if backtrack(nr, nc, step + 1):
+                return True
+            board[nr][nc] = -1  # backtrack
+
+        return False
+
+    if backtrack(start_row, start_col, 1):
+        return board
+    return None
+
+def print_knights_board(board, n):
+    width = len(str(n * n))
+    border = "+" + (("-" * (width + 2) + "+") * n)
+    print(border)
+    for row in range(n):
+        line = "|"
+        for col in range(n):
+            val = board[row][col] + 1  # 1-based untuk tampilan
+            line += f" {val:{width}} |"
+        print(line)
+        print(border)
+
+def run_knights_tour():
+    print("\n" + "=" * 50)
+    print("       MASALAH TUR KUDA (KNIGHT'S TOUR)")
+    print("=" * 50)
+    try:
+        n = int(input("Masukkan ukuran papan (disarankan 5-8): "))
+        start_row = int(input(f"Baris awal kuda (0 s/d {n-1}): "))
+        start_col = int(input(f"Kolom awal kuda (0 s/d {n-1}): "))
+    except ValueError:
+        print("Input tidak valid.")
+        return
+
+    if n < 1:
+        print("Ukuran papan harus > 0.")
+        return
+    if not (0 <= start_row < n and 0 <= start_col < n):
+        print("Posisi awal di luar papan.")
+        return
+
+    print(f"\nMencari tur kuda pada papan {n}x{n} dari posisi ({start_row}, {start_col})...")
+    board = solve_knights_tour(n, start_row, start_col)
+
+    if board is None:
+        print("Tidak ada solusi dari posisi ini.")
+        return
+
+    print("Tur ditemukan! Angka menunjukkan urutan langkah:\n")
+    print_knights_board(board, n)
+
+    # Tampilkan daftar langkah
+    steps = [(0, 0)] * (n * n)
+    for r in range(n):
+        for c in range(n):
+            steps[board[r][c]] = (r, c)
+
+    print(f"\nUrutan langkah (baris, kolom) — 0-based:")
+    for i, (r, c) in enumerate(steps):
+        end = "\n" if (i + 1) % 8 == 0 or i == n * n - 1 else "  "
+        print(f"  {i+1:2}.({r},{c})", end=end)
+
+
+# ============================================================
+# 3. KNAPSACK (MASALAH KARUNG)
+# ============================================================
+
+def solve_knapsack(weights, target, index=0, current=0, chosen=None):
+    """
+    Mencari SEMUA kombinasi barang yang totalnya tepat = target.
+    Menggunakan rekursi murni dengan dua cabang: ambil / tidak ambil.
+    """
+    if chosen is None:
+        chosen = []
+
+    # Basis rekursi: total berat tepat sama dengan target
+    if current == target:
+        return [chosen[:]]
+
+    # Pruning: sudah melebihi target atau sudah habis barangnya
+    if current > target or index >= len(weights):
+        return []
+
+    results = []
+
+    # Cabang 1: ambil barang ke-index
+    chosen.append(weights[index])
+    results += solve_knapsack(weights, target, index + 1, current + weights[index], chosen)
+    chosen.pop()
+
+    # Cabang 2: lewati barang ke-index
+    results += solve_knapsack(weights, target, index + 1, current, chosen)
+
+    return results
+
+def run_knapsack():
+    print("\n" + "=" * 50)
+    print("       MASALAH KNAPSACK (KARUNG)")
+    print("=" * 50)
+
+    print("Masukkan berat barang-barang (pisahkan dengan spasi).")
+    print("Tekan Enter untuk pakai contoh default: 2 5 6 9 12 14 20")
+    raw = input("Berat barang: ").strip()
+
+    if raw == "":
+        weights = [2, 5, 6, 9, 12, 14, 20]
+        print(f"Menggunakan default: {weights}")
+    else:
+        try:
+            weights = list(map(int, raw.split()))
+        except ValueError:
+            print("Input tidak valid.")
+            return
+
+    if not weights:
+        print("Tidak ada barang.")
+        return
+
+    try:
+        target = int(input("Masukkan berat target: "))
+    except ValueError:
+        print("Input tidak valid.")
+        return
+
+    if target <= 0:
+        print("Target harus > 0.")
+        return
+
+    print(f"\nMencari kombinasi dari {weights}")
+    print(f"yang totalnya tepat = {target}...\n")
+
+    solutions = solve_knapsack(weights, target)
+
+    if not solutions:
+        print(f"Tidak ada kombinasi yang mencapai berat target {target}.")
+        return
+
+    print(f"Ditemukan {len(solutions)} solusi:\n")
+    for i, sol in enumerate(solutions, 1):
+        total = sum(sol)
+        items_str = " + ".join(map(str, sol))
+        print(f"  Solusi {i:2}: [{items_str}] = {total}")
+
+    print(f"\nTotal solusi: {len(solutions)}")
+
+
+# ============================================================
+# MENU UTAMA
+# ============================================================
+
+def main():
+    while True:
+        print("\n" + "=" * 50)
+        print("   PROGRAM ALGORITMA REKURSIF & BACKTRACKING")
+        print("=" * 50)
+        print("  1. N-Queens (N-Ratu)")
+        print("  2. Knight's Tour (Tur Kuda)")
+        print("  3. Knapsack (Masalah Karung)")
+        print("  0. Keluar")
+        print("-" * 50)
+
+        pilihan = input("Pilih menu (0-3): ").strip()
+
+        if pilihan == "1":
+            run_nqueens()
+        elif pilihan == "2":
+            run_knights_tour()
+        elif pilihan == "3":
+            run_knapsack()
+        elif pilihan == "0":
+            print("\nProgram selesai. Terima kasih!")
+            break
+        else:
+            print("Pilihan tidak valid, coba lagi.")
+
+if __name__ == "__main__":
+    main()
