@@ -1,0 +1,393 @@
+# ============================================================
+#  ExprHeapSorter — Implementasi Lengkap
+#  Bagian 2: Expression Tree + In-Place HeapSort (Bab 13)
+#
+#  Berisi:
+#    1. Expression Tree Builder & Evaluator
+#    2. In-Place Max-Heap Construction
+#    3. Heapsort In-Place
+#    4. Complete Tree Validator
+# ============================================================
+
+from typing import List, Optional
+from collections import deque
+
+
+# ============================================================
+class ExprHeapSorter:
+
+    def __init__(self, expr_str: str):
+        self.expr = expr_str
+        self.values: List[int] = []
+
+    # =========================================================
+    # 1. EXPRESSION TREE BUILDER & EVALUATOR
+    # =========================================================
+
+    def parse_and_evaluate(self) -> List[int]:
+        """
+        Membangun pohon ekspresi dari string terparentheses penuh,
+        mengevaluasi hasilnya, dan mengembalikan list nilai integer.
+        """
+        tokens = deque(self.expr.replace(" ", ""))
+        root = self._build_tree(tokens)
+        if root is None:
+            raise ValueError("Ekspresi tidak valid atau kosong.")
+        result = self._eval_tree(root)
+        # _eval_tree mengembalikan nilai numerik (bukan list)
+        self.values = [int(result)]
+        return self.values
+
+    def _build_tree(self, tokens: deque) -> Optional[dict]:
+        """
+        Membangun pohon ekspresi secara rekursif dari antrian token.
+
+        Pola (sesuai Listing 13.9):
+          - Jika token '(' → proses subpohon kiri, baca operator, proses subpohon kanan, lewati ')'
+          - Jika token adalah digit/angka → buat node daun (operand)
+          - Gunakan dict: {'val': nilai/operator, 'left': node, 'right': node}
+        """
+        if not tokens:
+            return None
+
+        token = tokens.popleft()
+
+        if token == '(':
+            # Bangun subpohon kiri
+            left_node = self._build_tree(tokens)
+
+            # Token berikutnya adalah operator
+            if not tokens:
+                raise ValueError("Operator tidak ditemukan setelah subekspresi kiri.")
+            operator = tokens.popleft()
+            if operator not in ('+', '-', '*', '/'):
+                raise ValueError(f"Token operator tidak valid: '{operator}'")
+
+            # Bangun subpohon kanan
+            right_node = self._build_tree(tokens)
+
+            # Lewati ')'
+            if tokens and tokens[0] == ')':
+                tokens.popleft()
+            else:
+                raise ValueError("Tanda tutup kurung ')' tidak ditemukan.")
+
+            return {'val': operator, 'left': left_node, 'right': right_node}
+
+        else:
+            # Operand: kumpulkan digit multi-karakter (misal "12", "100")
+            num_str = token
+            while tokens and tokens[0].isdigit():
+                num_str += tokens.popleft()
+
+            if not num_str.isdigit():
+                raise ValueError(f"Token operand tidak valid: '{num_str}'")
+
+            return {'val': int(num_str), 'left': None, 'right': None}
+
+    def _eval_tree(self, node: Optional[dict]):
+        """
+        Evaluasi pohon ekspresi secara postorder (kiri → kanan → root).
+        Mengembalikan nilai numerik hasil evaluasi subtree.
+        Menangani pembagian nol dengan ValueError.
+        """
+        if node is None:
+            raise ValueError("Node kosong ditemukan saat evaluasi.")
+
+        # Node daun: kembalikan nilai operand langsung
+        if node['left'] is None and node['right'] is None:
+            return node['val']
+
+        # Rekursi: evaluasi kiri dan kanan terlebih dahulu (postorder)
+        left_val  = self._eval_tree(node['left'])
+        right_val = self._eval_tree(node['right'])
+
+        op = node['val']
+        if op == '+':
+            return left_val + right_val
+        elif op == '-':
+            return left_val - right_val
+        elif op == '*':
+            return left_val * right_val
+        elif op == '/':
+            if right_val == 0:
+                raise ValueError("Pembagian dengan nol tidak diizinkan.")
+            return left_val / right_val
+        else:
+            raise ValueError(f"Operator tidak dikenal: '{op}'")
+
+    def print_tree(self, node: Optional[dict], prefix="", is_left=True):
+        """Visualisasi pohon ekspresi (opsional, untuk debugging)."""
+        if node is None:
+            return
+        connector = "├── " if is_left else "└── "
+        print(prefix + connector + str(node['val']))
+        if node['left'] or node['right']:
+            extension = "│   " if is_left else "    "
+            self.print_tree(node['left'],  prefix + extension, True)
+            self.print_tree(node['right'], prefix + extension, False)
+
+    def postorder_string(self, node: Optional[dict]) -> str:
+        """Hasilkan notasi postfix dari pohon ekspresi."""
+        if node is None:
+            return ""
+        if node['left'] is None and node['right'] is None:
+            return str(node['val'])
+        left  = self.postorder_string(node['left'])
+        right = self.postorder_string(node['right'])
+        return f"{left} {right} {node['val']}"
+
+    def inorder_string(self, node: Optional[dict]) -> str:
+        """Hasilkan notasi infix (dengan tanda kurung eksplisit)."""
+        if node is None:
+            return ""
+        if node['left'] is None and node['right'] is None:
+            return str(node['val'])
+        left  = self.inorder_string(node['left'])
+        right = self.inorder_string(node['right'])
+        return f"({left} {node['val']} {right})"
+
+
+    # =========================================================
+    # 2 & 3. IN-PLACE MAX-HEAP + HEAPSORT
+    # =========================================================
+
+    def heapsort_inplace(self, arr: List[int]) -> List[int]:
+        """
+        Mengurutkan array secara ascending menggunakan in-place heapsort.
+
+        Fase 1 — Bangun max-heap:
+          Mulai dari node internal terakhir (n//2 - 1) ke atas (indeks 0).
+          Setiap node di-sift-down sehingga subtree-nya memenuhi heap property.
+
+        Fase 2 — Ekstraksi & pengurutan:
+          Tukar root (maksimum) dengan elemen terakhir heap,
+          kurangi ukuran heap, sift-down root baru.
+          Ulangi hingga heap berukuran 1.
+
+        Kompleksitas: Waktu O(n log n), Ruang tambahan O(1).
+        """
+        n = len(arr)
+        if n <= 1:
+            return arr
+
+        # Fase 1: Bangun max-heap dari bawah ke atas
+        for i in range(n // 2 - 1, -1, -1):
+            self._sift_down(arr, n, i)
+
+        # Fase 2: Ekstrak elemen satu per satu dari heap
+        for end in range(n - 1, 0, -1):
+            # Pindahkan root (max) ke posisi akhir heap saat ini
+            arr[0], arr[end] = arr[end], arr[0]
+            # Pulihkan heap property pada heap yang mengecil
+            self._sift_down(arr, end, 0)
+
+        return arr
+
+    def _sift_down(self, arr: List[int], heap_size: int, idx: int):
+        """
+        Pulihkan max-heap property dengan mendorong elemen di idx ke bawah.
+
+        Rumus indeks (complete binary tree):
+          left  child = 2 * idx + 1
+          right child = 2 * idx + 2
+          parent      = (idx - 1) // 2
+
+        Loop berlanjut selama ada child yang lebih besar dari node saat ini.
+        Jumlah perbandingan maksimum per panggilan: 2 * floor(log2(n)) = O(log n).
+        """
+        while True:
+            largest = idx
+            left    = 2 * idx + 1
+            right   = 2 * idx + 2
+
+            # Bandingkan dengan child kiri
+            if left < heap_size and arr[left] > arr[largest]:
+                largest = left
+
+            # Bandingkan dengan child kanan
+            if right < heap_size and arr[right] > arr[largest]:
+                largest = right
+
+            # Jika idx sudah terbesar, heap property terpenuhi → berhenti
+            if largest == idx:
+                break
+
+            # Tukar dengan child terbesar dan lanjutkan ke bawah
+            arr[idx], arr[largest] = arr[largest], arr[idx]
+            idx = largest
+
+
+    # =========================================================
+    # 4. COMPLETE TREE VALIDATOR
+    # =========================================================
+
+    def is_complete_tree(self, arr: List[int]) -> bool:
+        """
+        Memvalidasi apakah array memenuhi properti complete binary tree
+        ketika dipetakan ke struktur heap berbasis array (indeks 0..n-1).
+
+        Properti complete binary tree:
+          - Semua level terisi penuh kecuali level terakhir.
+          - Level terakhir terisi dari kiri ke kanan tanpa "lubang".
+
+        Pada representasi array: jika ada node di indeks i,
+        maka semua indeks 0..i-1 juga harus ada (tidak boleh ada celah).
+        Karena array Python selalu berindeks kontinu 0..n-1,
+        kondisi ini SELALU terpenuhi untuk array tidak kosong.
+
+        Validasi tambahan: periksa apakah setiap node internal
+        memiliki child sesuai rumus (tidak ada indeks yang "loncat").
+        """
+        n = len(arr)
+        if n == 0:
+            return True   # pohon kosong dianggap complete
+
+        # Cek setiap node: jika punya child kanan, harus punya child kiri
+        for i in range(n):
+            left  = 2 * i + 1
+            right = 2 * i + 2
+
+            # Jika child kanan ada tetapi child kiri tidak → tidak complete
+            if right < n and left >= n:
+                return False
+
+            # Jika tidak ada child kiri, tidak boleh ada child kanan
+            # (sudah dicakup kondisi di atas, tapi eksplisit untuk kejelasan)
+            if left >= n:
+                # Node ini adalah daun, tidak ada child → tidak masalah
+                continue
+
+        return True
+
+
+# ============================================================
+#  PENGUJIAN LENGKAP
+# ============================================================
+
+def separator(title=""):
+    print("\n" + "=" * 60)
+    if title:
+        print(f"   {title}")
+        print("=" * 60)
+
+def run_tests():
+    separator("UJI COBA ExprHeapSorter")
+
+    # ── Test 1: Expression Tree Builder & Evaluator ──────────
+    separator("1. Expression Tree")
+
+    expr_tests = [
+        ("((8*5)+(9/(7-4)))", 43.0),   # contoh dari soal
+        ("(3+4)",             7.0),
+        ("((2+3)*(4-1))",    15.0),
+        ("((10/2)+3)",         8.0),
+    ]
+
+    for expr, expected in expr_tests:
+        try:
+            sorter = ExprHeapSorter(expr)
+            tokens = deque(expr.replace(" ", ""))
+            root   = sorter._build_tree(tokens)
+            result = sorter._eval_tree(root)
+            status = "OK" if abs(result - expected) < 1e-9 else "FAIL"
+            postfix = sorter.postorder_string(root)
+            infix   = sorter.inorder_string(root)
+            print(f"  [{status}] {expr}")
+            print(f"         Hasil   : {result}")
+            print(f"         Postfix : {postfix}")
+            print(f"         Infix   : {infix}")
+        except Exception as e:
+            print(f"  [ERR] {expr} -> {e}")
+
+    # Test pembagian nol
+    try:
+        sorter = ExprHeapSorter("(5/0)")
+        tokens = deque("(5/0)")
+        root   = sorter._build_tree(tokens)
+        sorter._eval_tree(root)
+        print("  [FAIL] Seharusnya raise ValueError untuk pembagian nol")
+    except ValueError as e:
+        print(f"\n  [OK] Pembagian nol tertangkap: {e}")
+
+    # ── Test 2: Visualisasi Pohon Ekspresi Soal ──────────────
+    separator("2. Visualisasi Pohon ((8*5)+(9/(7-4)))")
+    sorter_demo = ExprHeapSorter("((8*5)+(9/(7-4)))")
+    tokens_demo = deque("((8*5)+(9/(7-4)))".replace(" ", ""))
+    root_demo   = sorter_demo._build_tree(tokens_demo)
+    print("  Struktur pohon:")
+    sorter_demo.print_tree(root_demo, "  ", False)
+    print(f"\n  Postorder (postfix) : {sorter_demo.postorder_string(root_demo)}")
+    print(f"  Inorder   (infix)   : {sorter_demo.inorder_string(root_demo)}")
+
+    # ── Test 3: In-Place Heapsort ────────────────────────────
+    separator("3. In-Place Heapsort")
+
+    heap_tests = [
+        [40, 3, 12, 1, 9],               # nilai acak
+        [5, 3, 8, 1, 9, 2, 7, 4, 6],
+        list(range(10, 0, -1)),           # descending
+        [1, 1, 1, 1],                     # semua sama
+        [42],
+        [],
+        [7, 2],
+    ]
+
+    for t in heap_tests:
+        original = t[:]
+        sorter   = ExprHeapSorter("")
+        result   = sorter.heapsort_inplace(t[:])
+        expected = sorted(original)
+        status   = "OK" if result == expected else "FAIL"
+        print(f"  [{status}] {original} -> {result}")
+
+    # ── Test 4: Complete Tree Validator ─────────────────────
+    separator("4. Complete Tree Validator")
+
+    ct_tests = [
+        ([1, 2, 3, 4, 5], True),    # complete
+        ([1, 2, 3, 4],    True),    # complete (level terakhir kiri)
+        ([1],             True),    # satu node
+        ([],              True),    # kosong
+        ([1, 2, 3],       True),    # complete (full level 1)
+    ]
+
+    for arr, expected in ct_tests:
+        sorter = ExprHeapSorter("")
+        result = sorter.is_complete_tree(arr)
+        status = "OK" if result == expected else "FAIL"
+        print(f"  [{status}] arr={arr} -> is_complete={result} (expected={expected})")
+
+    # ── Test 5: Full Pipeline ────────────────────────────────
+    separator("5. Full Pipeline: Ekspresi -> Heap -> Sort")
+
+    expressions = [
+        "((8*5)+(9/(7-4)))",
+        "(3+4)",
+        "((2+3)*(4-1))",
+    ]
+
+    collected = []
+    for expr in expressions:
+        sorter = ExprHeapSorter(expr)
+        vals   = sorter.parse_and_evaluate()
+        collected.extend([int(v) for v in vals])
+        print(f"  Ekspresi '{expr}' -> nilai: {vals}")
+
+    # Tambah 5 angka acak manual untuk memenuhi 8 elemen
+    extra = [15, 7, 23, 4, 11]
+    collected.extend(extra)
+    print(f"\n  Semua nilai (ekspresi + tambahan): {collected}")
+
+    sorter_final = ExprHeapSorter("")
+    sorted_arr   = sorter_final.heapsort_inplace(collected[:])
+    print(f"  Setelah heapsort               : {sorted_arr}")
+
+    is_ct = sorter_final.is_complete_tree(sorted_arr)
+    print(f"  is_complete_tree(sorted)       : {is_ct}")
+
+    separator("SELESAI — Semua uji selesai")
+
+
+if __name__ == "__main__":
+    run_tests()
